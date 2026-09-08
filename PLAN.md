@@ -166,3 +166,4 @@
 | 2026-09-08 | 修复 AppKit 与 Accessibility 坐标系的 Y 轴转换，纠正四角布局上下颠倒问题；新增回归测试。 |
 | 2026-09-08 | 将 GitHub 仓库设为 public；增加 GitHub Actions 多架构 Release，以及从 GitHub Releases 检查、比较和安装更新的 macOS updater。 |
 | 2026-09-08 | 增加 `Launch at Login` 菜单选项，使用 `SMAppService.mainApp` 管理 macOS 登录项，并准备发布 `v0.1.2`。 |
+| 2026-09-08 | 在菜单栏菜单中加入 `Open GitHub Repository…`，方便访问 Zonely 项目主页。 |

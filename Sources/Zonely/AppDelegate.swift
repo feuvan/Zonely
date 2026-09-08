@@ -4,6 +4,8 @@ import ZonelyCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private static let repositoryURL = URL(string: "https://github.com/feuvan/Zonely")!
+
     private let windowService = WindowService()
     private let targetApplicationTracker = TargetApplicationTracker()
     private let updateService = UpdateService()
@@ -127,6 +129,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         updateItem.target = self
 
+        let repositoryItem = menu.addItem(
+            withTitle: "Open GitHub Repository…",
+            action: #selector(openRepository(_:)),
+            keyEquivalent: ""
+        )
+        repositoryItem.target = self
+
         menu.addItem(.separator())
 
         let quitItem = menu.addItem(
@@ -216,6 +225,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func checkForUpdates(_ sender: Any?) {
         beginUpdateCheck(showNoUpdate: true)
+    }
+
+    @objc private func openRepository(_ sender: Any?) {
+        NSWorkspace.shared.open(Self.repositoryURL)
     }
 
     private func scheduleAutomaticUpdateCheck() {
