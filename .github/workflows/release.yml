@@ -97,5 +97,6 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --title "Zonely $RELEASE_TAG" \
+            --latest \
             --notes-file RELEASE_NOTES.md \
             release-assets/*
