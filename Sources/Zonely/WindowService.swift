@@ -44,6 +44,7 @@ final class WindowService {
     }
 
     private let layout = WindowLayout()
+    private let coordinateConverter = WindowCoordinateConverter()
 
     func apply(_ region: WindowRegion, to application: NSRunningApplication, on screen: NSScreen? = nil) throws {
         guard Self.isTrusted else {
@@ -57,7 +58,7 @@ final class WindowService {
         }
 
         let targetFrame = layout.frame(for: region, in: targetScreen.visibleFrame)
-        try setFrame(targetFrame, of: window)
+        try setFrame(targetFrame, on: targetScreen, of: window)
     }
 
     func focusedWindow(for application: NSRunningApplication) throws -> AXUIElement {
@@ -82,8 +83,12 @@ final class WindowService {
         return CGRect(origin: origin, size: size)
     }
 
-    func setFrame(_ frame: CGRect, of window: AXUIElement) throws {
-        var origin = frame.origin
+    func setFrame(_ frame: CGRect, on screen: NSScreen, of window: AXUIElement) throws {
+        let accessibilityFrame = coordinateConverter.accessibilityFrame(
+            for: frame,
+            in: screen.frame
+        )
+        var origin = accessibilityFrame.origin
         guard let position = AXValueCreate(.cgPoint, &origin) else {
             throw ServiceError.operationFailed("create the window position")
         }

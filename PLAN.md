@@ -156,3 +156,4 @@
 | 2026-09-08 | 初始化 Zonely 仓库和项目计划。 |
 | 2026-09-08 | 完成 AppKit 菜单栏应用、Accessibility 窗口控制、标准布局、拖动监听和预览原型；`swift test` 与 `.app` 构建通过。 |
 | 2026-09-08 | 增加 GitLab CI/CD：macOS 测试、ARM64 打包、SHA-256 校验和 tag Release。 |
+| 2026-09-08 | 修复 AppKit 与 Accessibility 坐标系的 Y 轴转换，纠正四角布局上下颠倒问题；新增回归测试。 |

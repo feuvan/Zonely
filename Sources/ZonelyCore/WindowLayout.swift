@@ -30,6 +30,21 @@ public enum WindowRegion: String, CaseIterable, Sendable {
     }
 }
 
+public struct WindowCoordinateConverter: Sendable {
+    public init() {}
+
+    /// Converts an AppKit screen rect (origin at the bottom-left) to the
+    /// Accessibility screen rect (origin at the top-left).
+    public func accessibilityFrame(for appKitFrame: CGRect, in screenFrame: CGRect) -> CGRect {
+        CGRect(
+            x: appKitFrame.minX,
+            y: screenFrame.maxY - appKitFrame.maxY,
+            width: appKitFrame.width,
+            height: appKitFrame.height
+        )
+    }
+}
+
 public struct WindowLayout: Sendable {
     public init() {}
 

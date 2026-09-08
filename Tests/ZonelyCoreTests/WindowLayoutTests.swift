@@ -66,6 +66,27 @@ final class WindowLayoutTests: XCTestCase {
         )
     }
 
+    func testConvertsAppKitFrameToAccessibilityCoordinates() {
+        let screenFrame = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        let visibleFrame = CGRect(x: 0, y: 25, width: 1920, height: 1030)
+        let converter = WindowCoordinateConverter()
+
+        XCTAssertEqual(
+            converter.accessibilityFrame(
+                for: layout.frame(for: .topLeft, in: visibleFrame),
+                in: screenFrame
+            ),
+            CGRect(x: 0, y: 25, width: 960, height: 515)
+        )
+        XCTAssertEqual(
+            converter.accessibilityFrame(
+                for: layout.frame(for: .bottomRight, in: visibleFrame),
+                in: screenFrame
+            ),
+            CGRect(x: 960, y: 540, width: 960, height: 515)
+        )
+    }
+
     func testReturnsNilOutsideVisibleFrame() {
         XCTAssertNil(layout.region(containing: CGPoint(x: -1, y: 100), in: screen))
         XCTAssertNil(layout.region(containing: CGPoint(x: 960, y: 100), in: screen))

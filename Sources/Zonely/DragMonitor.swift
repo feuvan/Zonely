@@ -121,7 +121,7 @@ final class DragMonitor {
 
         do {
             let frame = layout.frame(for: region, in: screen.visibleFrame)
-            try windowService.setFrame(frame, of: activeDrag.window)
+            try windowService.setFrame(frame, on: screen, of: activeDrag.window)
         } catch {
             onError?(error.localizedDescription)
         }
