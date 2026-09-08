@@ -66,6 +66,31 @@ final class WindowLayoutTests: XCTestCase {
         )
     }
 
+    func testComparesReleaseVersionsWithVPrefix() {
+        XCTAssertTrue(SemanticVersion("v0.1.1")! > SemanticVersion("0.1.0")!)
+        XCTAssertFalse(SemanticVersion("0.1.0")! > SemanticVersion("v0.1.0")!)
+        XCTAssertTrue(SemanticVersion("1.0.0")! > SemanticVersion("0.9.9")!)
+    }
+
+    func testPrereleaseVersionsSortBeforeStableVersions() {
+        XCTAssertTrue(SemanticVersion("1.0.0-beta.2")! > SemanticVersion("1.0.0-beta.1")!)
+        XCTAssertTrue(SemanticVersion("1.0.0")! > SemanticVersion("1.0.0-rc.1")!)
+        XCTAssertFalse(SemanticVersion("1.0.0-alpha")! > SemanticVersion("1.0.0")!)
+    }
+
+    func testIgnoresBuildMetadata() {
+        XCTAssertEqual(
+            SemanticVersion("v1.2.3+build.42"),
+            SemanticVersion("1.2.3")
+        )
+    }
+
+    func testRejectsInvalidVersions() {
+        XCTAssertNil(SemanticVersion("1.2"))
+        XCTAssertNil(SemanticVersion("release-1.2.3"))
+        XCTAssertNil(SemanticVersion("1.2.3-"))
+    }
+
     func testConvertsAppKitFrameToAccessibilityCoordinates() {
         let screenFrame = CGRect(x: 0, y: 0, width: 1920, height: 1080)
         let visibleFrame = CGRect(x: 0, y: 25, width: 1920, height: 1030)

@@ -4,8 +4,8 @@
 
 ## 当前状态
 
-- 阶段：M2 原型开发
-- 当前目标：验证真实窗口拖动、区域预览和自动 resize 的完整闭环
+- 阶段：M4 发布准备
+- 当前目标：完善 GitHub Release 流程，让已安装的 Zonely 可以自动发现并更新
 - 记录方式：完成一项任务后勾选复选框，并在必要时补充决策、日期或备注
 
 ## 产品目标
@@ -94,6 +94,10 @@
 ### M4：稳定性和可发布性
 
 - [~] 补充区域计算和状态机单元测试
+- [x] 完成 GitHub public project 设置
+- [x] 完成 GitHub Actions：构建 arm64/x86_64 版本并创建 Release
+- [x] 完成 GitHub Releases 自动检查、版本比较和 `.app` 更新
+- [ ] 完成更新安装流程的真实版本升级测试
 - [ ] 建立常见应用兼容性测试清单
 - [ ] 测试权限拒绝、权限撤销和应用重启场景
 - [ ] 测试全屏、最小化、最大化和不可调整大小窗口
@@ -102,6 +106,8 @@
 - [ ] 增加日志开关和错误诊断信息
 - [ ] 完成应用图标、名称和菜单文案
 - [x] 建立 GitLab CI：运行测试、构建 macOS `.app`、生成 ZIP 和 tag Release
+- [x] 建立 GitHub Release：分别构建 arm64/x86_64，并上传 ZIP 与 SHA-256
+- [x] 配置 GitHub Releases 自动更新：启动检查、版本比较、checksum 校验、替换和重启
 - [ ] 配置代码签名和 notarization
 - [ ] 生成可安装的 DMG 或其他发布包
 - [ ] 编写安装、权限设置和卸载说明
@@ -120,12 +126,12 @@
 ## 需要尽早确定的决策
 
 - [x] 最低支持 macOS 版本
-- [ ] 是否只支持 Intel 和 Apple Silicon，还是同时提供 universal binary
+- [x] 是否只支持 Intel 和 Apple Silicon，还是同时提供 universal binary（分别提供 arm64 与 x86_64 Release 资产）
 - [x] 默认拖动触发区域和触发延迟（当前为标题栏 80pt、边缘 25%）
 - [x] MVP 是否包含键盘快捷键（首版不包含）
 - [x] MVP 是否包含用户自定义布局（首版不包含）
 - [ ] 应用采用开源许可证还是暂不公开源代码
-- [ ] 首个版本的发布渠道：GitHub Releases、Homebrew 或两者
+- [x] 首个版本的发布渠道：GitHub Releases、Homebrew 或两者（当前为 GitHub Releases）
 
 ## 风险与应对
 
@@ -157,3 +163,4 @@
 | 2026-09-08 | 完成 AppKit 菜单栏应用、Accessibility 窗口控制、标准布局、拖动监听和预览原型；`swift test` 与 `.app` 构建通过。 |
 | 2026-09-08 | 增加 GitLab CI/CD：macOS 测试、ARM64 打包、SHA-256 校验和 tag Release。 |
 | 2026-09-08 | 修复 AppKit 与 Accessibility 坐标系的 Y 轴转换，纠正四角布局上下颠倒问题；新增回归测试。 |
+| 2026-09-08 | 将 GitHub 仓库设为 public；增加 GitHub Actions 多架构 Release，以及从 GitHub Releases 检查、比较和安装更新的 macOS updater。 |

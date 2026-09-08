@@ -2,9 +2,11 @@ import AppKit
 import Foundation
 import ZonelyCore
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let windowService = WindowService()
     private let targetApplicationTracker = TargetApplicationTracker()
+    private let updateService = UpdateService()
     private lazy var dragMonitor: DragMonitor = {
         let monitor = DragMonitor(
             windowService: windowService,
@@ -19,12 +21,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var permissionTimer: Timer?
     private var isPaused = false
+    private var isCheckingForUpdates = false
+    private var isInstallingUpdate = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         configureStatusItem()
         dragMonitor.start()
         startPermissionRefresh()
+        scheduleAutomaticUpdateCheck()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -48,9 +53,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startPermissionRefresh() {
-        permissionTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            self?.rebuildMenu()
-        }
+        let timer = Timer(
+            timeInterval: 2,
+            target: self,
+            selector: #selector(refreshPermission(_:)),
+            userInfo: nil,
+            repeats: true
+        )
+        permissionTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    @objc private func refreshPermission(_ timer: Timer) {
+        rebuildMenu()
     }
 
     private func rebuildMenu() {
@@ -96,6 +111,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         settingsItem.target = self
 
+        let updateItem = menu.addItem(
+            withTitle: "Check for Updates…",
+            action: #selector(checkForUpdates(_:)),
+            keyEquivalent: ""
+        )
+        updateItem.target = self
+
         menu.addItem(.separator())
 
         let quitItem = menu.addItem(
@@ -132,6 +154,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         rebuildMenu()
     }
 
+    @objc private func checkForUpdates(_ sender: Any?) {
+        beginUpdateCheck(showNoUpdate: true)
+    }
+
+    private func scheduleAutomaticUpdateCheck() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            self?.beginUpdateCheck(showNoUpdate: false)
+        }
+    }
+
+    private func beginUpdateCheck(showNoUpdate: Bool) {
+        guard !isCheckingForUpdates, !isInstallingUpdate else { return }
+        isCheckingForUpdates = true
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let update = try await updateService.checkForUpdate()
+                isCheckingForUpdates = false
+                if let update {
+                    presentUpdate(update)
+                } else if showNoUpdate {
+                    showInfo(
+                        title: "Zonely Is Up to Date",
+                        message: "You are running Zonely \(updateService.currentVersion)."
+                    )
+                }
+            } catch {
+                isCheckingForUpdates = false
+                if showNoUpdate {
+                    showError(title: "Update Check Failed", message: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func presentUpdate(_ update: AvailableUpdate) {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Zonely \(update.version) Is Available"
+        let notes = update.notes.isEmpty ? "A new version of Zonely is ready to install." : update.notes
+        alert.informativeText = "\(notes)\n\nInstalled: \(updateService.currentVersion)"
+        alert.addButton(withTitle: "Install Update")
+        alert.addButton(withTitle: "Later")
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            installUpdate(update)
+        }
+    }
+
+    private func installUpdate(_ update: AvailableUpdate) {
+        guard !isInstallingUpdate else { return }
+        isInstallingUpdate = true
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await updateService.downloadAndScheduleInstall(update)
+                isInstallingUpdate = false
+                NSApp.terminate(nil)
+            } catch {
+                isInstallingUpdate = false
+                showError(title: "Update Installation Failed", message: error.localizedDescription)
+            }
+        }
+    }
+
     @objc private func applyRegion(_ sender: NSMenuItem) {
         guard !isPaused,
               let region = sender.representedObject as? WindowRegion else {
@@ -163,6 +252,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit(_ sender: Any?) {
         NSApp.terminate(nil)
+    }
+
+    private func showInfo(title: String, message: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = title
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     private func showError(title: String, message: String) {

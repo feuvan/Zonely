@@ -1,5 +1,8 @@
 # Zonely
 
+[![Release](https://github.com/feuvan/Zonely/actions/workflows/release.yml/badge.svg)](https://github.com/feuvan/Zonely/actions/workflows/release.yml)
+[![Latest Release](https://img.shields.io/github/v/release/feuvan/Zonely?display_name=tag)](https://github.com/feuvan/Zonely/releases)
+
 Zonely is a macOS menu bar tool for quickly positioning and resizing windows with mouse gestures.
 
 ## Current capabilities
@@ -38,6 +41,23 @@ On first launch, enable Zonely under **System Settings → Privacy & Security �
 - `Resources/Info.plist` defines the application bundle metadata.
 - `scripts/build-app.sh` packages the SwiftPM executable as `Zonely.app`.
 - `scripts/package-app.sh` creates a versioned macOS ZIP and SHA-256 checksum.
+
+## GitHub Releases and auto updates
+
+[`.github/workflows/release.yml`](.github/workflows/release.yml) builds separate Apple Silicon (`arm64`) and Intel (`x86_64`) packages when a version tag such as `v0.1.1` is pushed. It publishes the ZIP files and SHA-256 checksum files to a public GitHub Release.
+
+Zonely checks the latest public GitHub Release five seconds after launch and also provides **Check for Updates…** in the menu bar menu. It compares the Release tag with the installed `CFBundleShortVersionString`, selects the package matching the current Mac architecture, verifies the optional SHA-256 file, then asks before downloading and installing. The installer stages the new app, waits for the current process to exit, replaces the existing `.app`, and relaunches it.
+
+The updater reads the GitHub Releases API directly, so running the app does not require the `gh` CLI to be installed. A release must exist before update checks can return an update. Local development builds started outside an `.app` bundle can check for updates but cannot install them.
+
+To create a release:
+
+```sh
+git tag -a v0.1.1 -m "Zonely v0.1.1"
+git push origin v0.1.1
+```
+
+The first release should be created from a clean tag after the GitHub Actions workflow is enabled. The current archive is unsigned and not notarized; code signing and notarization remain in [`PLAN.md`](PLAN.md).
 
 ## GitLab CI/CD
 
