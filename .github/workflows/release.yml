@@ -31,7 +31,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_TAG }}
 
@@ -42,7 +42,7 @@ jobs:
         run: ./scripts/package-app.sh "$RELEASE_TAG"
 
       - name: Upload package artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Zonely-${{ matrix.architecture }}
           path: |
@@ -56,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download package artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-assets
           merge-multiple: true

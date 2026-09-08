@@ -108,6 +108,7 @@
 - [x] 建立 GitLab CI：运行测试、构建 macOS `.app`、生成 ZIP 和 tag Release
 - [x] 建立 GitHub Release：分别构建 arm64/x86_64，并上传 ZIP 与 SHA-256
 - [x] 配置 GitHub Releases 自动更新：启动检查、版本比较、checksum 校验、替换和重启
+- [x] 加入开机自启动选项：使用 `SMAppService.mainApp` 管理 Login Items
 - [ ] 配置代码签名和 notarization
 - [ ] 生成可安装的 DMG 或其他发布包
 - [ ] 编写安装、权限设置和卸载说明
@@ -164,3 +165,4 @@
 | 2026-09-08 | 增加 GitLab CI/CD：macOS 测试、ARM64 打包、SHA-256 校验和 tag Release。 |
 | 2026-09-08 | 修复 AppKit 与 Accessibility 坐标系的 Y 轴转换，纠正四角布局上下颠倒问题；新增回归测试。 |
 | 2026-09-08 | 将 GitHub 仓库设为 public；增加 GitHub Actions 多架构 Release，以及从 GitHub Releases 检查、比较和安装更新的 macOS updater。 |
+| 2026-09-08 | 增加 `Launch at Login` 菜单选项，使用 `SMAppService.mainApp` 管理 macOS 登录项，并准备发布 `v0.1.2`。 |

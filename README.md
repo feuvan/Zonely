@@ -8,6 +8,7 @@ Zonely is a macOS menu bar tool for quickly positioning and resizing windows wit
 ## Current capabilities
 
 - Runs as a menu bar app without a Dock icon.
+- Can launch automatically at login through **Launch at Login**.
 - Checks and guides the user through Accessibility permission.
 - Lets you manually apply left half, right half, full screen, and four quarter layouts from the menu.
 - Detects title bar drags and shows a screen region preview.
@@ -32,6 +33,8 @@ open build/Zonely.app
 ```
 
 On first launch, enable Zonely under **System Settings → Privacy & Security → Accessibility**. Zonely needs this permission to read and resize other application windows.
+
+Use **Launch at Login** from the menu bar menu to start Zonely automatically when you sign in. macOS may ask you to approve it under **System Settings → General → Login Items**.
 
 ## Project layout
 

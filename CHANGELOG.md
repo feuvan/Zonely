@@ -2,6 +2,13 @@
 
 All notable changes to Zonely are documented here.
 
+## v0.1.2 - 2026-09-08
+
+### Added
+
+- Added a **Launch at Login** menu option using macOS Service Management.
+- Added Login Items approval guidance in System Settings.
+
 ## v0.1.1 - 2026-09-08
 
 ### Added

@@ -104,6 +104,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         pauseItem.target = self
 
+        let launchAtLoginItem = menu.addItem(
+            withTitle: launchAtLoginTitle,
+            action: #selector(toggleLaunchAtLogin(_:)),
+            keyEquivalent: ""
+        )
+        launchAtLoginItem.target = self
+        launchAtLoginItem.state = launchAtLoginState
+        launchAtLoginItem.isEnabled = LaunchAtLoginService.isAvailable
+
         let settingsItem = menu.addItem(
             withTitle: "Open Accessibility Settings…",
             action: #selector(openAccessibilitySettings(_:)),
@@ -137,6 +146,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func requestPermission(_ sender: Any?) {
         WindowService.requestAccessibilityPermission()
         WindowService.openAccessibilitySettings()
+    }
+
+    private var launchAtLoginTitle: String {
+        if !LaunchAtLoginService.isAvailable {
+            return "Launch at Login (App Bundle Required)"
+        }
+        if LaunchAtLoginService.needsApproval {
+            return "Launch at Login (Approval Required)"
+        }
+        return "Launch at Login"
+    }
+
+    private var launchAtLoginState: NSControl.StateValue {
+        if LaunchAtLoginService.isEnabled {
+            return .on
+        }
+        if LaunchAtLoginService.needsApproval {
+            return .mixed
+        }
+        return .off
+    }
+
+    @objc private func toggleLaunchAtLogin(_ sender: NSMenuItem) {
+        guard LaunchAtLoginService.isAvailable else {
+            showError(
+                title: "App Bundle Required",
+                message: "Launch at Login can be configured after launching Zonely from a .app bundle."
+            )
+            return
+        }
+
+        do {
+            if LaunchAtLoginService.isEnabled {
+                try LaunchAtLoginService.disable()
+            } else if LaunchAtLoginService.needsApproval {
+                LaunchAtLoginService.openSettings()
+            } else {
+                try LaunchAtLoginService.enable()
+            }
+            rebuildMenu()
+
+            if LaunchAtLoginService.needsApproval {
+                LaunchAtLoginService.openSettings()
+                showInfo(
+                    title: "Approval Required",
+                    message: "Enable Zonely under System Settings → General → Login Items."
+                )
+            }
+        } catch {
+            showError(title: "Could Not Update Login Item", message: error.localizedDescription)
+        }
     }
 
     @objc private func openAccessibilitySettings(_ sender: Any?) {
