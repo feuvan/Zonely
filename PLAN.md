@@ -95,7 +95,7 @@
 
 - [x] 补充区域计算和状态机单元测试
 - [x] 完成 GitHub public project 设置
-- [x] 完成 GitHub Actions：构建 universal 版本并创建 Release；每次 push 运行测试
+- [x] 完成 GitHub Actions：构建 arm64/x86_64 版本并创建 Release；每次 push 运行测试
 - [x] 完成 GitHub Releases 自动检查和版本比较（发现新版本后打开 Release 页面）
 - [ ] 代码签名完成后，重新评估应用内自动安装更新（Sparkle 或自研）
 - [ ] 建立常见应用兼容性测试清单
@@ -105,7 +105,7 @@
 - [x] 降低事件监听和预览渲染的 CPU 占用（去掉 2 秒轮询；点击时不再枚举窗口；预览只在区域变化时更新）
 - [ ] 增加日志开关和错误诊断信息
 - [ ] 完成应用图标、名称和菜单文案
-- [x] 建立 GitHub Release：构建 universal 包，并上传 ZIP 与 SHA-256
+- [x] 建立 GitHub Release：分别构建 arm64/x86_64，并上传 ZIP 与 SHA-256
 - [x] 加入开机自启动选项：使用 `SMAppService.mainApp` 管理 Login Items
 - [ ] 配置代码签名和 notarization
 - [ ] 生成可安装的 DMG 或其他发布包
@@ -125,7 +125,7 @@
 ## 需要尽早确定的决策
 
 - [x] 最低支持 macOS 版本
-- [x] 是否只支持 Intel 和 Apple Silicon，还是同时提供 universal binary（提供单个 universal Release 资产）
+- [x] 是否只支持 Intel 和 Apple Silicon，还是同时提供 universal binary（分别提供 arm64 与 x86_64 Release 资产）
 - [x] 默认拖动触发区域和触发延迟（当前为距屏幕边缘 10pt、距角 120pt，无延迟）
 - [x] MVP 是否包含键盘快捷键（首版不包含）
 - [x] MVP 是否包含用户自定义布局（首版不包含）
@@ -165,4 +165,4 @@
 | 2026-09-08 | 将 GitHub 仓库设为 public；增加 GitHub Actions 多架构 Release，以及从 GitHub Releases 检查、比较和安装更新的 macOS updater。 |
 | 2026-09-08 | 增加 `Launch at Login` 菜单选项，使用 `SMAppService.mainApp` 管理 macOS 登录项，并准备发布 `v0.1.2`。 |
 | 2026-09-08 | 在菜单栏菜单中加入 `Open GitHub Repository…`，方便访问 Zonely 项目主页。 |
-| 2026-11-11 | 重新审视后重做拖拽路径：取光标下的窗口并确认其在移动；触发改为贴近屏幕边缘；坐标换算改以主屏高度为基准。更新器缩减为“提示并打开 Release 页面”，发布改为单个 universal 包，删除 GitLab CI，新增 push 时运行的 CI。以上改动只经过单元测试和 CI 编译，尚未在真实设备上验证。 |
+| 2026-11-11 | 重新审视后重做拖拽路径：取光标下的窗口并确认其在移动；触发改为贴近屏幕边缘；坐标换算改以主屏高度为基准。更新器缩减为“提示并打开 Release 页面”，发布仍为 arm64 与 x86_64 各一个包，删除 GitLab CI，新增 push 时运行的 CI。以上改动只经过单元测试和 CI 编译，尚未在真实设备上验证。 |

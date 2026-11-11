@@ -1,9 +1,6 @@
 #!/bin/zsh
 set -euo pipefail
 
-# Packages a universal Zonely.app as build/Zonely-<version>-macos.zip with a
-# SHA-256 checksum file.
-
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="${1:-local}"
 if [[ ! "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
@@ -11,13 +8,13 @@ if [[ ! "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
   exit 1
 fi
 
-# Zonely 0.1.x looks for this exact name when it updates itself.
-ARCHIVE_NAME="Zonely-${VERSION}-macos.zip"
+ARCHITECTURE="$(uname -m)"
+ARCHIVE_NAME="Zonely-${VERSION}-macos-${ARCHITECTURE}.zip"
 ARCHIVE_PATH="$ROOT_DIR/build/$ARCHIVE_NAME"
 CHECKSUM_PATH="${ARCHIVE_PATH}.sha256"
 
 cd "$ROOT_DIR"
-UNIVERSAL=1 ./scripts/build-app.sh
+./scripts/build-app.sh
 
 BUNDLE_VERSION="${VERSION#v}"
 if [[ "$BUNDLE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then

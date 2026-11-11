@@ -27,5 +27,5 @@ jobs:
       - name: Run tests
         run: swift test
 
-      - name: Build universal app bundle
-        run: UNIVERSAL=1 ./scripts/build-app.sh
+      - name: Build app bundle
+        run: ./scripts/build-app.sh

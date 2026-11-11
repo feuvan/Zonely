@@ -10,7 +10,6 @@ All notable changes to Zonely are documented here.
 - A drag is recognized by finding the window under the pointer and confirming that it is moving, instead of treating the top 80 points of the frontmost application's window as a title bar.
 - **Test Layout** is now **Move Focused Window** and uses the screen the window is on.
 - Update checks now link to the release page instead of replacing the app in place.
-- Releases ship one universal package instead of separate Apple Silicon and Intel packages.
 - A failed drag snap is reported in the menu instead of a modal alert.
 
 ### Fixed

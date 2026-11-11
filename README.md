@@ -49,19 +49,19 @@ Use **Launch at Login** from the menu bar menu to start Zonely automatically whe
 - `Tests/ZonelyCoreTests` contains the tests for `ZonelyCore`.
 - `Resources/Info.plist` defines the application bundle metadata.
 - `scripts/build-app.sh` packages the SwiftPM executable as `Zonely.app`.
-- `scripts/package-app.sh` creates a versioned universal ZIP and SHA-256 checksum.
+- `scripts/package-app.sh` creates a versioned macOS ZIP for the current architecture and a SHA-256 checksum.
 
 ## Continuous integration
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `swift test` and builds the universal app bundle on every push.
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `swift test` and builds the app bundle on every push.
 
 ## Releases and updates
 
-[`.github/workflows/release.yml`](.github/workflows/release.yml) builds one universal package (Apple Silicon and Intel) when a version tag such as `v0.2.0` is pushed. It publishes `Zonely-<tag>-macos.zip` and its SHA-256 checksum file to a public GitHub Release. The release notes come from the matching section of [`CHANGELOG.md`](CHANGELOG.md), so add that section before tagging.
+[`.github/workflows/release.yml`](.github/workflows/release.yml) builds separate Apple Silicon (`arm64`) and Intel (`x86_64`) packages when a version tag such as `v0.2.0` is pushed. It publishes `Zonely-<tag>-macos-<arch>.zip` and a SHA-256 checksum file for each to a public GitHub Release. The release notes come from the matching section of [`CHANGELOG.md`](CHANGELOG.md), so add that section before tagging.
 
 Zonely checks the latest public GitHub Release five seconds after launch. When a newer version exists, the menu shows an item that opens its release page. **Check for Updates…** runs the same check and reports the result. Zonely does not download or replace itself: the app is not code signed yet, so an in-place update could not be verified and macOS would drop the Accessibility permission for the replaced app.
 
-To install a new version, download the ZIP from the release page, replace `Zonely.app`, and re-enable Zonely under **System Settings → Privacy & Security → Accessibility** if macOS asks. The archive is unsigned and not notarized; code signing and notarization remain in [`PLAN.md`](PLAN.md).
+To install a new version, download the ZIP for your Mac's architecture from the release page, replace `Zonely.app`, and re-enable Zonely under **System Settings → Privacy & Security → Accessibility** if macOS asks. The archive is unsigned and not notarized; code signing and notarization remain in [`PLAN.md`](PLAN.md).
 
 To create a release:
 
