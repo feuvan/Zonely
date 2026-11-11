@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Decides whether a mouse drag is really moving a window.
