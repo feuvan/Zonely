@@ -19,16 +19,8 @@ env:
 
 jobs:
   package:
-    name: Package ${{ matrix.architecture }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-latest
-            architecture: arm64
-          - runner: macos-15-intel
-            architecture: x86_64
-    runs-on: ${{ matrix.runner }}
+    name: Package universal app
+    runs-on: macos-latest
     steps:
       - name: Check out source
         uses: actions/checkout@v7
@@ -44,7 +36,7 @@ jobs:
       - name: Upload package artifact
         uses: actions/upload-artifact@v7
         with:
-          name: Zonely-${{ matrix.architecture }}
+          name: Zonely-macos
           path: |
             build/*.zip
             build/*.sha256

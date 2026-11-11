@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test and build
+    # A pull request from a branch of this repository is already covered by
+    # the push run.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: macos-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Run tests
+        run: swift test
+
+      - name: Build universal app bundle
+        run: UNIVERSAL=1 ./scripts/build-app.sh
