@@ -1,37 +1,28 @@
 import AppKit
-import CoreGraphics
 import Foundation
 import ZonelyCore
 
+/// Watches mouse drags and snaps a window that is dragged to a screen edge.
+///
+/// Nothing is looked up on a plain click. On the first drag event the window
+/// under the pointer is found, and `DragTracker` then confirms that the
+/// window itself is moving before any preview is shown.
 final class DragMonitor {
-    var isEnabled = true
-
-    var onError: ((String) -> Void)?
-
-    private struct ActiveDrag {
-        let application: NSRunningApplication
-        let window: AXUIElement
-        var region: WindowRegion?
-        var screen: NSScreen?
-    }
+    /// Called after each snap attempt with the error, or `nil` on success.
+    var onSnapResult: ((Error?) -> Void)?
 
     private let windowService: WindowService
-    private let targetApplicationTracker: TargetApplicationTracker
     private let preview: PreviewOverlay
     private let layout = WindowLayout()
 
-    private var activeDrag: ActiveDrag?
-    private var mouseDownMonitor: Any?
-    private var mouseDraggedMonitor: Any?
-    private var mouseUpMonitor: Any?
+    private var tracker = DragTracker()
+    private var window: AXUIElement?
+    /// Where the window goes on release. AppKit coordinates.
+    private var targetFrame: CGRect?
+    private var eventMonitors: [Any] = []
 
-    init(
-        windowService: WindowService,
-        targetApplicationTracker: TargetApplicationTracker,
-        preview: PreviewOverlay = PreviewOverlay()
-    ) {
+    init(windowService: WindowService, preview: PreviewOverlay = PreviewOverlay()) {
         self.windowService = windowService
-        self.targetApplicationTracker = targetApplicationTracker
         self.preview = preview
     }
 
@@ -39,117 +30,100 @@ final class DragMonitor {
         stop()
     }
 
-    func start() {
-        guard mouseDownMonitor == nil else { return }
+    var isRunning: Bool {
+        !eventMonitors.isEmpty
+    }
 
-        mouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
-            self?.mouseDown(event)
-        }
-        mouseDraggedMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDragged) { [weak self] event in
-            self?.mouseDragged(event)
-        }
-        mouseUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
-            self?.mouseUp(event)
-        }
+    func start() {
+        guard !isRunning else { return }
+
+        let monitors: [Any?] = [
+            NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] _ in
+                self?.endDrag()
+            },
+            NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDragged) { [weak self] event in
+                self?.mouseDragged(event)
+            },
+            NSEvent.addGlobalMonitorForEvents(matching: .leftMouseUp) { [weak self] _ in
+                self?.mouseUp()
+            }
+        ]
+        eventMonitors = monitors.compactMap { $0 }
     }
 
     func stop() {
-        if let mouseDownMonitor {
-            NSEvent.removeMonitor(mouseDownMonitor)
-        }
-        if let mouseDraggedMonitor {
-            NSEvent.removeMonitor(mouseDraggedMonitor)
-        }
-        if let mouseUpMonitor {
-            NSEvent.removeMonitor(mouseUpMonitor)
-        }
-        mouseDownMonitor = nil
-        mouseDraggedMonitor = nil
-        mouseUpMonitor = nil
-        activeDrag = nil
-        preview.hide()
-    }
-
-    private func mouseDown(_ event: NSEvent) {
-        guard isEnabled,
-              WindowService.isTrusted,
-              let application = targetApplicationTracker.application,
-              isTitleBarPoint(event, ownedBy: application),
-              let window = try? windowService.focusedWindow(for: application) else {
-            return
-        }
-
-        activeDrag = ActiveDrag(
-            application: application,
-            window: window,
-            region: nil,
-            screen: nil
-        )
+        eventMonitors.forEach(NSEvent.removeMonitor)
+        eventMonitors = []
+        endDrag()
     }
 
     private func mouseDragged(_ event: NSEvent) {
-        guard isEnabled, var activeDrag else { return }
-
-        let mouseLocation = NSEvent.mouseLocation
-        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(mouseLocation) }),
-              let region = layout.region(containing: mouseLocation, in: screen.visibleFrame) else {
-            preview.hide()
-            activeDrag.region = nil
-            activeDrag.screen = nil
-            self.activeDrag = activeDrag
-            return
+        switch tracker.state {
+        case .idle:
+            beginDrag(event)
+        case .pending:
+            guard let window,
+                  let pointer = event.cgEvent?.location,
+                  let frame = windowService.frame(of: window) else {
+                tracker.cancel()
+                return
+            }
+            tracker.update(windowFrame: frame, pointer: pointer)
+            if tracker.state == .moving {
+                updateTarget()
+            }
+        case .moving:
+            updateTarget()
+        case .cancelled:
+            break
         }
-
-        activeDrag.region = region
-        activeDrag.screen = screen
-        self.activeDrag = activeDrag
-        preview.show(frame: layout.frame(for: region, in: screen.visibleFrame))
     }
 
-    private func mouseUp(_ event: NSEvent) {
-        guard let activeDrag else { return }
-        defer {
-            self.activeDrag = nil
-            preview.hide()
-        }
-
-        guard isEnabled,
-              let region = activeDrag.region,
-              let screen = activeDrag.screen else {
+    private func beginDrag(_ event: NSEvent) {
+        guard WindowService.isTrusted,
+              let pointer = event.cgEvent?.location,
+              let window = windowService.window(at: pointer),
+              let frame = windowService.frame(of: window) else {
+            tracker.cancel()
             return
         }
+        self.window = window
+        tracker.begin(windowFrame: frame, pointer: pointer)
+    }
+
+    private func updateTarget() {
+        let pointer = NSEvent.mouseLocation
+        var newTarget: CGRect?
+        if let screen = NSScreen.containing(pointer),
+           let region = layout.region(at: pointer, in: screen.frame) {
+            newTarget = layout.frame(for: region, in: screen.visibleFrame)
+        }
+
+        guard newTarget != targetFrame else { return }
+        targetFrame = newTarget
+        if let newTarget {
+            preview.show(frame: newTarget)
+        } else {
+            preview.hide()
+        }
+    }
+
+    private func mouseUp() {
+        defer { endDrag() }
+        guard tracker.state == .moving, let window, let targetFrame else { return }
 
         do {
-            let frame = layout.frame(for: region, in: screen.visibleFrame)
-            try windowService.setFrame(frame, on: screen, of: activeDrag.window)
+            try windowService.setFrame(targetFrame, of: window)
+            onSnapResult?(nil)
         } catch {
-            onError?(error.localizedDescription)
+            onSnapResult?(error)
         }
     }
 
-    private func isTitleBarPoint(_ event: NSEvent, ownedBy application: NSRunningApplication) -> Bool {
-        guard let location = event.cgEvent?.location,
-              let windows = CGWindowListCopyWindowInfo(
-                [.optionOnScreenOnly, .excludeDesktopElements],
-                kCGNullWindowID
-              ) as? [[String: Any]] else {
-            return false
-        }
-
-        for window in windows {
-            guard let processIdentifier = window[kCGWindowOwnerPID as String] as? Int,
-                  processIdentifier == Int(application.processIdentifier),
-                  let layer = window[kCGWindowLayer as String] as? Int,
-                  layer == 0,
-                  let bounds = window[kCGWindowBounds as String] as? [String: Any],
-                  let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary),
-                  frame.contains(location) else {
-                continue
-            }
-
-            return location.y <= frame.minY + 80
-        }
-
-        return false
+    private func endDrag() {
+        tracker.reset()
+        window = nil
+        targetFrame = nil
+        preview.hide()
     }
 }

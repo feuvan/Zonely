@@ -1,6 +1,8 @@
 import AppKit
 import Foundation
 
+/// Remembers the most recently active application other than Zonely, so that
+/// menu commands act on the application the user was working in.
 final class TargetApplicationTracker {
     private(set) var application: NSRunningApplication?
 
@@ -8,7 +10,11 @@ final class TargetApplicationTracker {
     private let ownProcessIdentifier = ProcessInfo.processInfo.processIdentifier
 
     init() {
-        captureCurrentApplication()
+        if let current = NSWorkspace.shared.frontmostApplication,
+           current.processIdentifier != ownProcessIdentifier {
+            application = current
+        }
+
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
@@ -27,13 +33,5 @@ final class TargetApplicationTracker {
         if let activationObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
         }
-    }
-
-    func captureCurrentApplication() {
-        guard let current = NSWorkspace.shared.frontmostApplication,
-              current.processIdentifier != ownProcessIdentifier else {
-            return
-        }
-        application = current
     }
 }
