@@ -8,14 +8,20 @@ Zonely is a macOS menu bar tool for quickly positioning and resizing windows wit
 ## Current capabilities
 
 - Runs as a menu bar app without a Dock icon.
+- Snaps a window when you drag it to a screen edge: left or right edge for a half, top edge for the full screen, and any corner for a quarter. A preview shows where the window will land before you release it.
+- Works on the screen the pointer is on, including secondary displays.
+- Moves the focused window from the menu with **Move Focused Window**.
 - Can launch automatically at login through **Launch at Login**.
 - Checks and guides the user through Accessibility permission.
-- Lets you manually apply left half, right half, full screen, and four quarter layouts from the menu.
-- Detects title bar drags and shows a screen region preview.
-- Applies a selected region when the drag ends.
-- Includes core layout tests for standard screen regions.
+- Tells you when a newer release is available.
 
 The project is in early development. The first implementation targets macOS 13 and later.
+
+### How drag snapping decides
+
+Zonely looks up the window under the pointer when a drag starts and only reacts once that window is actually moving with the pointer. Dragging a tab, selecting text, or resizing a window is ignored. A region is selected when the pointer is within 10 points of a screen edge; within 120 points of a corner it selects the quarter. The bottom edge away from the corners selects nothing, because the Dock usually sits there.
+
+macOS 15 and later has its own edge tiling. If both react to the same drag, turn off **System Settings → Desktop & Dock → Drag windows to screen edges to tile**.
 
 ## Build and run
 
@@ -38,45 +44,30 @@ Use **Launch at Login** from the menu bar menu to start Zonely automatically whe
 
 ## Project layout
 
-- `Sources/ZonelyCore` contains platform-independent layout calculations.
+- `Sources/ZonelyCore` contains the logic that does not need a screen: region layout, coordinate conversion, drag recognition, and the release check.
 - `Sources/Zonely` contains the AppKit menu bar application and window integration.
-- `Tests/ZonelyCoreTests` contains layout behavior tests.
+- `Tests/ZonelyCoreTests` contains the tests for `ZonelyCore`.
 - `Resources/Info.plist` defines the application bundle metadata.
 - `scripts/build-app.sh` packages the SwiftPM executable as `Zonely.app`.
-- `scripts/package-app.sh` creates a versioned macOS ZIP and SHA-256 checksum.
+- `scripts/package-app.sh` creates a versioned universal ZIP and SHA-256 checksum.
 
-## GitHub Releases and auto updates
+## Continuous integration
 
-[`.github/workflows/release.yml`](.github/workflows/release.yml) builds separate Apple Silicon (`arm64`) and Intel (`x86_64`) packages when a version tag such as `v0.1.1` is pushed. It publishes the ZIP files and SHA-256 checksum files to a public GitHub Release.
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `swift test` and builds the universal app bundle on every push.
 
-Zonely checks the latest public GitHub Release five seconds after launch and also provides **Check for Updates…** in the menu bar menu. It compares the Release tag with the installed `CFBundleShortVersionString`, selects the package matching the current Mac architecture, verifies the optional SHA-256 file, then asks before downloading and installing. The installer stages the new app, waits for the current process to exit, replaces the existing `.app`, and relaunches it.
+## Releases and updates
 
-The updater reads the GitHub Releases API directly, so running the app does not require the `gh` CLI to be installed. A release must exist before update checks can return an update. Local development builds started outside an `.app` bundle can check for updates but cannot install them.
+[`.github/workflows/release.yml`](.github/workflows/release.yml) builds one universal package (Apple Silicon and Intel) when a version tag such as `v0.2.0` is pushed. It publishes `Zonely-<tag>-macos.zip` and its SHA-256 checksum file to a public GitHub Release. The release notes come from the matching section of [`CHANGELOG.md`](CHANGELOG.md), so add that section before tagging.
+
+Zonely checks the latest public GitHub Release five seconds after launch. When a newer version exists, the menu shows an item that opens its release page. **Check for Updates…** runs the same check and reports the result. Zonely does not download or replace itself: the app is not code signed yet, so an in-place update could not be verified and macOS would drop the Accessibility permission for the replaced app.
+
+To install a new version, download the ZIP from the release page, replace `Zonely.app`, and re-enable Zonely under **System Settings → Privacy & Security → Accessibility** if macOS asks. The archive is unsigned and not notarized; code signing and notarization remain in [`PLAN.md`](PLAN.md).
 
 To create a release:
 
 ```sh
-git tag -a v0.1.1 -m "Zonely v0.1.1"
-git push origin v0.1.1
-```
-
-The first release should be created from a clean tag after the GitHub Actions workflow is enabled. The current archive is unsigned and not notarized; code signing and notarization remain in [`PLAN.md`](PLAN.md).
-
-## GitLab CI/CD
-
-[`.gitlab-ci.yml`](.gitlab-ci.yml) defines three stages:
-
-- `run-tests` runs `swift test` on GitLab's Apple Silicon macOS runner.
-- `package-app` builds `Zonely.app`, creates an ARM64 ZIP, and publishes its checksum as a job artifact.
-- `create-release` runs for version tags such as `v0.1.0` and creates a GitLab Release with download links for the ZIP and checksum.
-
-The pipeline uses GitLab's hosted macOS runner (`saas-macos-medium-m1`, `macos-26-xcode-26`). A GitLab project must have access to that runner, or the runner tag and image can be changed in `.gitlab-ci.yml` for a self-managed macOS runner. The current archive is an unsigned, Apple Silicon build; signing and notarization remain in [`PLAN.md`](PLAN.md).
-
-To trigger a release after the repository is available in GitLab:
-
-```sh
-git tag -a v0.1.0 -m "Zonely v0.1.0"
-git push origin v0.1.0
+git tag -a v0.2.0 -m "Zonely v0.2.0"
+git push origin v0.2.0
 ```
 
 See [`PLAN.md`](PLAN.md) for the implementation roadmap and progress tracking.
