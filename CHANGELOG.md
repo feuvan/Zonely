@@ -2,7 +2,7 @@
 
 All notable changes to Zonely are documented here.
 
-## Unreleased
+## v0.2.0 - 2026-11-12
 
 ### Changed
 
