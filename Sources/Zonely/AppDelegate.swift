@@ -3,40 +3,34 @@ import Foundation
 import ZonelyCore
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private static let repositoryURL = URL(string: "https://github.com/feuvan/Zonely")!
 
     private let windowService = WindowService()
     private let targetApplicationTracker = TargetApplicationTracker()
     private let updateService = UpdateService()
-    private lazy var dragMonitor: DragMonitor = {
-        let monitor = DragMonitor(
-            windowService: windowService,
-            targetApplicationTracker: targetApplicationTracker
-        )
-        monitor.onError = { [weak self] message in
-            self?.showError(title: "Could Not Position Window", message: message)
-        }
-        return monitor
-    }()
+    private lazy var dragMonitor: DragMonitor = DragMonitor(windowService: windowService)
 
     private var statusItem: NSStatusItem?
-    private var permissionTimer: Timer?
-    private var isPaused = false
     private var isCheckingForUpdates = false
-    private var isInstallingUpdate = false
+    private var availableUpdate: AvailableUpdate?
+    private var lastSnapError: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         configureStatusItem()
+
+        dragMonitor.onSnapResult = { [weak self] error in
+            self?.lastSnapError = error?.localizedDescription
+        }
         dragMonitor.start()
-        startPermissionRefresh()
-        scheduleAutomaticUpdateCheck()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            self?.checkForUpdates(userInitiated: false)
+        }
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
-        permissionTimer?.invalidate()
-    }
+    // MARK: - Menu
 
     private func configureStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -50,112 +44,96 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.button?.title = "Z"
         }
         item.button?.toolTip = "Zonely"
-        statusItem = item
-        rebuildMenu()
-    }
 
-    private func startPermissionRefresh() {
-        let timer = Timer(
-            timeInterval: 2,
-            target: self,
-            selector: #selector(refreshPermission(_:)),
-            userInfo: nil,
-            repeats: true
-        )
-        permissionTimer = timer
-        RunLoop.main.add(timer, forMode: .common)
-    }
-
-    @objc private func refreshPermission(_ timer: Timer) {
-        rebuildMenu()
-    }
-
-    private func rebuildMenu() {
-        guard let statusItem else { return }
-
+        // The menu is filled in `menuNeedsUpdate` each time it opens, so its
+        // state is always current without polling.
         let menu = NSMenu()
-        let titleItem = menu.addItem(withTitle: "Zonely", action: nil, keyEquivalent: "")
-        titleItem.isEnabled = false
+        menu.delegate = self
+        item.menu = menu
+        statusItem = item
+    }
 
-        let permissionItem = menu.addItem(
-            withTitle: permissionStatusTitle,
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === statusItem?.menu else { return }
+        menu.removeAllItems()
+
+        addItem("Zonely \(updateService.currentVersion)", to: menu)
+        addItem(
+            WindowService.isTrusted ? "Accessibility: Ready" : "Accessibility: Required",
             action: #selector(requestPermission(_:)),
-            keyEquivalent: ""
+            to: menu
         )
-        permissionItem.target = self
+        if let lastSnapError {
+            addItem("Last snap failed: \(lastSnapError)", to: menu)
+        }
+        if let availableUpdate {
+            addItem(
+                "Zonely \(availableUpdate.version) Is Available…",
+                action: #selector(openAvailableUpdate(_:)),
+                to: menu
+            )
+        }
 
-        let layoutItem = menu.addItem(withTitle: "Test Layout", action: nil, keyEquivalent: "")
+        menu.addItem(.separator())
+
         let layoutMenu = NSMenu()
         for region in WindowRegion.allCases {
-            let item = layoutMenu.addItem(
-                withTitle: region.title,
-                action: #selector(applyRegion(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
+            let item = addItem(region.title, action: #selector(applyRegion(_:)), to: layoutMenu)
             item.representedObject = region
         }
+        let layoutItem = addItem("Move Focused Window", to: menu)
         menu.setSubmenu(layoutMenu, for: layoutItem)
 
-        menu.addItem(.separator())
-
-        let pauseItem = menu.addItem(
-            withTitle: isPaused ? "Resume Zonely" : "Pause Zonely",
+        addItem(
+            dragMonitor.isRunning ? "Pause Drag Snapping" : "Resume Drag Snapping",
             action: #selector(togglePause(_:)),
-            keyEquivalent: ""
+            to: menu
         )
-        pauseItem.target = self
 
-        let launchAtLoginItem = menu.addItem(
-            withTitle: launchAtLoginTitle,
+        let launchAtLoginItem = addItem(
+            launchAtLoginTitle,
             action: #selector(toggleLaunchAtLogin(_:)),
-            keyEquivalent: ""
+            to: menu
         )
-        launchAtLoginItem.target = self
         launchAtLoginItem.state = launchAtLoginState
-        launchAtLoginItem.isEnabled = LaunchAtLoginService.isAvailable
-
-        let settingsItem = menu.addItem(
-            withTitle: "Open Accessibility Settings…",
-            action: #selector(openAccessibilitySettings(_:)),
-            keyEquivalent: ""
-        )
-        settingsItem.target = self
-
-        let updateItem = menu.addItem(
-            withTitle: "Check for Updates…",
-            action: #selector(checkForUpdates(_:)),
-            keyEquivalent: ""
-        )
-        updateItem.target = self
-
-        let repositoryItem = menu.addItem(
-            withTitle: "Open GitHub Repository…",
-            action: #selector(openRepository(_:)),
-            keyEquivalent: ""
-        )
-        repositoryItem.target = self
 
         menu.addItem(.separator())
 
-        let quitItem = menu.addItem(
-            withTitle: "Quit Zonely",
-            action: #selector(quit(_:)),
-            keyEquivalent: "q"
-        )
-        quitItem.target = self
+        addItem("Open Accessibility Settings…", action: #selector(openAccessibilitySettings(_:)), to: menu)
+        addItem("Check for Updates…", action: #selector(checkForUpdatesFromMenu(_:)), to: menu)
+        addItem("Open GitHub Repository…", action: #selector(openRepository(_:)), to: menu)
 
-        statusItem.menu = menu
+        menu.addItem(.separator())
+
+        addItem("Quit Zonely", action: #selector(quit(_:)), key: "q", to: menu)
     }
 
-    private var permissionStatusTitle: String {
-        WindowService.isTrusted ? "Accessibility: Ready" : "Accessibility: Required"
+    /// Adds an item that targets this object. An item without an action is
+    /// shown disabled, as a label.
+    @discardableResult
+    private func addItem(
+        _ title: String,
+        action: Selector? = nil,
+        key: String = "",
+        to menu: NSMenu
+    ) -> NSMenuItem {
+        let item = menu.addItem(withTitle: title, action: action, keyEquivalent: key)
+        item.target = self
+        return item
     }
+
+    // MARK: - Accessibility permission
 
     @objc private func requestPermission(_ sender: Any?) {
         WindowService.requestAccessibilityPermission()
         WindowService.openAccessibilitySettings()
     }
+
+    @objc private func openAccessibilitySettings(_ sender: Any?) {
+        WindowService.openAccessibilitySettings()
+    }
+
+    // MARK: - Launch at login
 
     private var launchAtLoginTitle: String {
         if !LaunchAtLoginService.isAvailable {
@@ -177,9 +155,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return .off
     }
 
-    @objc private func toggleLaunchAtLogin(_ sender: NSMenuItem) {
+    @objc private func toggleLaunchAtLogin(_ sender: Any?) {
         guard LaunchAtLoginService.isAvailable else {
-            showError(
+            showAlert(
+                .warning,
                 title: "App Bundle Required",
                 message: "Launch at Login can be configured after launching Zonely from a .app bundle."
             )
@@ -189,119 +168,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             if LaunchAtLoginService.isEnabled {
                 try LaunchAtLoginService.disable()
-            } else if LaunchAtLoginService.needsApproval {
-                LaunchAtLoginService.openSettings()
-            } else {
+            } else if !LaunchAtLoginService.needsApproval {
                 try LaunchAtLoginService.enable()
             }
-            rebuildMenu()
 
             if LaunchAtLoginService.needsApproval {
                 LaunchAtLoginService.openSettings()
-                showInfo(
+                showAlert(
+                    .informational,
                     title: "Approval Required",
                     message: "Enable Zonely under System Settings → General → Login Items."
                 )
             }
         } catch {
-            showError(title: "Could Not Update Login Item", message: error.localizedDescription)
+            showAlert(.warning, title: "Could Not Update Login Item", message: error.localizedDescription)
         }
     }
 
-    @objc private func openAccessibilitySettings(_ sender: Any?) {
-        WindowService.openAccessibilitySettings()
-    }
+    // MARK: - Window layout
 
     @objc private func togglePause(_ sender: Any?) {
-        isPaused.toggle()
-        dragMonitor.isEnabled = !isPaused
-        if isPaused {
+        if dragMonitor.isRunning {
             dragMonitor.stop()
         } else {
             dragMonitor.start()
         }
-        rebuildMenu()
-    }
-
-    @objc private func checkForUpdates(_ sender: Any?) {
-        beginUpdateCheck(showNoUpdate: true)
-    }
-
-    @objc private func openRepository(_ sender: Any?) {
-        NSWorkspace.shared.open(Self.repositoryURL)
-    }
-
-    private func scheduleAutomaticUpdateCheck() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-            self?.beginUpdateCheck(showNoUpdate: false)
-        }
-    }
-
-    private func beginUpdateCheck(showNoUpdate: Bool) {
-        guard !isCheckingForUpdates, !isInstallingUpdate else { return }
-        isCheckingForUpdates = true
-
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                let update = try await updateService.checkForUpdate()
-                isCheckingForUpdates = false
-                if let update {
-                    presentUpdate(update)
-                } else if showNoUpdate {
-                    showInfo(
-                        title: "Zonely Is Up to Date",
-                        message: "You are running Zonely \(updateService.currentVersion)."
-                    )
-                }
-            } catch {
-                isCheckingForUpdates = false
-                if showNoUpdate {
-                    showError(title: "Update Check Failed", message: error.localizedDescription)
-                }
-            }
-        }
-    }
-
-    private func presentUpdate(_ update: AvailableUpdate) {
-        let alert = NSAlert()
-        alert.alertStyle = .informational
-        alert.messageText = "Zonely \(update.version) Is Available"
-        let notes = update.notes.isEmpty ? "A new version of Zonely is ready to install." : update.notes
-        alert.informativeText = "\(notes)\n\nInstalled: \(updateService.currentVersion)"
-        alert.addButton(withTitle: "Install Update")
-        alert.addButton(withTitle: "Later")
-
-        if alert.runModal() == .alertFirstButtonReturn {
-            installUpdate(update)
-        }
-    }
-
-    private func installUpdate(_ update: AvailableUpdate) {
-        guard !isInstallingUpdate else { return }
-        isInstallingUpdate = true
-
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                try await updateService.downloadAndScheduleInstall(update)
-                isInstallingUpdate = false
-                NSApp.terminate(nil)
-            } catch {
-                isInstallingUpdate = false
-                showError(title: "Update Installation Failed", message: error.localizedDescription)
-            }
-        }
     }
 
     @objc private func applyRegion(_ sender: NSMenuItem) {
-        guard !isPaused,
-              let region = sender.representedObject as? WindowRegion else {
-            return
-        }
+        guard let region = sender.representedObject as? WindowRegion else { return }
 
         guard WindowService.isTrusted else {
-            showError(
+            showAlert(
+                .warning,
                 title: "Accessibility Permission Required",
                 message: "Enable Zonely in System Settings → Privacy & Security → Accessibility, then try again."
             )
@@ -309,7 +208,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         guard let application = targetApplicationTracker.application else {
-            showError(
+            showAlert(
+                .warning,
                 title: "No Target Application",
                 message: "Activate the application whose window you want to position, then try again."
             )
@@ -319,29 +219,86 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             try windowService.apply(region, to: application)
         } catch {
-            showError(title: "Could Not Position Window", message: error.localizedDescription)
+            showAlert(.warning, title: "Could Not Position Window", message: error.localizedDescription)
         }
     }
+
+    // MARK: - Updates
+
+    @objc private func checkForUpdatesFromMenu(_ sender: Any?) {
+        checkForUpdates(userInitiated: true)
+    }
+
+    @objc private func openAvailableUpdate(_ sender: Any?) {
+        guard let availableUpdate else { return }
+        NSWorkspace.shared.open(availableUpdate.releaseURL)
+    }
+
+    @objc private func openRepository(_ sender: Any?) {
+        NSWorkspace.shared.open(Self.repositoryURL)
+    }
+
+    /// An automatic check only records the update for the menu. A check the
+    /// user asked for also reports the outcome in an alert.
+    private func checkForUpdates(userInitiated: Bool) {
+        guard !isCheckingForUpdates else { return }
+        isCheckingForUpdates = true
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { isCheckingForUpdates = false }
+
+            do {
+                availableUpdate = try await updateService.checkForUpdate()
+                guard userInitiated else { return }
+
+                if let availableUpdate {
+                    presentUpdate(availableUpdate)
+                } else {
+                    showAlert(
+                        .informational,
+                        title: "Zonely Is Up to Date",
+                        message: "You are running Zonely \(updateService.currentVersion)."
+                    )
+                }
+            } catch {
+                if userInitiated {
+                    showAlert(.warning, title: "Update Check Failed", message: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func presentUpdate(_ update: AvailableUpdate) {
+        let notes = update.notes.isEmpty ? "A new version of Zonely is available to download." : update.notes
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Zonely \(update.version) Is Available"
+        alert.informativeText = "\(notes)\n\nInstalled: \(updateService.currentVersion)"
+        alert.addButton(withTitle: "View Release")
+        alert.addButton(withTitle: "Later")
+
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSWorkspace.shared.open(update.releaseURL)
+        }
+    }
+
+    // MARK: - Alerts
 
     @objc private func quit(_ sender: Any?) {
         NSApp.terminate(nil)
     }
 
-    private func showInfo(title: String, message: String) {
+    private func showAlert(_ style: NSAlert.Style, title: String, message: String) {
         let alert = NSAlert()
-        alert.alertStyle = .informational
+        alert.alertStyle = style
         alert.messageText = title
         alert.informativeText = message
         alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
 
-    private func showError(title: String, message: String) {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = title
-        alert.informativeText = message
-        alert.addButton(withTitle: "OK")
+        // Zonely has no Dock icon, so bring the alert in front of other apps.
+        NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
     }
 }

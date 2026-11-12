@@ -3,12 +3,18 @@ import ApplicationServices
 import Foundation
 import ZonelyCore
 
+extension NSScreen {
+    /// The screen that contains a point in AppKit global coordinates.
+    static func containing(_ point: CGPoint) -> NSScreen? {
+        screens.first { $0.frame.containsInclusive(point) }
+    }
+}
+
 final class WindowService {
     enum ServiceError: LocalizedError {
         case accessibilityPermissionRequired
         case noFocusedWindow
-        case unsupportedPosition
-        case unsupportedSize
+        case fullScreenWindow
         case operationFailed(String)
 
         var errorDescription: String? {
@@ -17,10 +23,8 @@ final class WindowService {
                 return "Zonely needs Accessibility permission to control windows."
             case .noFocusedWindow:
                 return "No controllable window was found in the selected application."
-            case .unsupportedPosition:
-                return "The selected window does not expose a readable position."
-            case .unsupportedSize:
-                return "The selected window does not expose a readable size."
+            case .fullScreenWindow:
+                return "The window is in full screen. Exit full screen, then try again."
             case let .operationFailed(operation):
                 return "Could not update the window while trying to \(operation)."
             }
@@ -44,121 +48,170 @@ final class WindowService {
     }
 
     private let layout = WindowLayout()
-    private let coordinateConverter = WindowCoordinateConverter()
+    private let systemWideElement = AXUIElementCreateSystemWide()
+    private let ownProcessIdentifier = ProcessInfo.processInfo.processIdentifier
 
-    func apply(_ region: WindowRegion, to application: NSRunningApplication, on screen: NSScreen? = nil) throws {
+    init() {
+        // Applies to every Accessibility request this process makes, so an
+        // unresponsive application cannot stall Zonely for long.
+        _ = AXUIElementSetMessagingTimeout(systemWideElement, 0.5)
+    }
+
+    /// Moves the application's focused window to `region` on the screen the
+    /// window is currently on.
+    func apply(_ region: WindowRegion, to application: NSRunningApplication) throws {
         guard Self.isTrusted else {
             throw ServiceError.accessibilityPermissionRequired
         }
 
         let window = try focusedWindow(for: application)
-        let targetScreen = screen ?? screenContainingMouse() ?? NSScreen.main
-        guard let targetScreen else {
+        guard let screen = screen(showing: window) ?? NSScreen.main else {
             throw ServiceError.operationFailed("find the target screen")
         }
-
-        let targetFrame = layout.frame(for: region, in: targetScreen.visibleFrame)
-        try setFrame(targetFrame, on: targetScreen, of: window)
+        try setFrame(layout.frame(for: region, in: screen.visibleFrame), of: window)
     }
 
     func focusedWindow(for application: NSRunningApplication) throws -> AXUIElement {
         let applicationElement = AXUIElementCreateApplication(application.processIdentifier)
-        var value: CFTypeRef?
-        let error = AXUIElementCopyAttributeValue(
-            applicationElement,
-            kAXFocusedWindowAttribute as CFString,
-            &value
-        )
-
-        guard error == .success, let window = value else {
+        guard let window = elementAttribute(kAXFocusedWindowAttribute, of: applicationElement) else {
             throw ServiceError.noFocusedWindow
         }
-
-        return window as! AXUIElement
+        return window
     }
 
-    func frame(of window: AXUIElement) throws -> CGRect {
-        let origin = try pointAttribute(kAXPositionAttribute, of: window, error: .unsupportedPosition)
-        let size = try sizeAttribute(kAXSizeAttribute, of: window, error: .unsupportedSize)
+    /// The window of another application under a point in Accessibility
+    /// (top-left origin) global coordinates.
+    func window(at point: CGPoint) -> AXUIElement? {
+        var hit: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(
+            systemWideElement,
+            Float(point.x),
+            Float(point.y),
+            &hit
+        ) == .success, let element = hit else {
+            return nil
+        }
+
+        var processIdentifier: pid_t = 0
+        guard AXUIElementGetPid(element, &processIdentifier) == .success,
+              processIdentifier != ownProcessIdentifier else {
+            return nil
+        }
+
+        if stringAttribute(kAXRoleAttribute, of: element) == kAXWindowRole {
+            return element
+        }
+        return elementAttribute(kAXWindowAttribute, of: element)
+    }
+
+    /// The window frame in Accessibility (top-left origin) global coordinates.
+    func frame(of window: AXUIElement) -> CGRect? {
+        guard let origin = valueAttribute(kAXPositionAttribute, of: window, as: .cgPoint, initial: CGPoint.zero),
+              let size = valueAttribute(kAXSizeAttribute, of: window, as: .cgSize, initial: CGSize.zero) else {
+            return nil
+        }
         return CGRect(origin: origin, size: size)
     }
 
-    func setFrame(_ frame: CGRect, on screen: NSScreen, of window: AXUIElement) throws {
-        let accessibilityFrame = coordinateConverter.accessibilityFrame(
-            for: frame,
-            in: screen.frame
-        )
-        var origin = accessibilityFrame.origin
-        guard let position = AXValueCreate(.cgPoint, &origin) else {
-            throw ServiceError.operationFailed("create the window position")
+    /// Moves and resizes a window to a frame in AppKit global coordinates.
+    /// A window that cannot be resized is only moved.
+    func setFrame(_ appKitFrame: CGRect, of window: AXUIElement) throws {
+        guard let primaryScreen = NSScreen.screens.first else {
+            throw ServiceError.operationFailed("find the primary screen")
+        }
+        if boolAttribute("AXFullScreen", of: window) == true {
+            throw ServiceError.fullScreenWindow
         }
 
-        let positionError = AXUIElementSetAttributeValue(
-            window,
-            kAXPositionAttribute as CFString,
-            position
-        )
-        guard positionError == .success else {
+        let target = ScreenCoordinates(primaryScreenHeight: primaryScreen.frame.height)
+            .accessibilityFrame(for: appKitFrame)
+        let isResizable = isSettable(kAXSizeAttribute, of: window)
+
+        // Size, then position, then size again: an application clamps a new
+        // size to the screen the window is on at that moment, so a single
+        // resize can come out wrong when the window changes screens.
+        if isResizable {
+            _ = setValue(target.size, type: .cgSize, for: kAXSizeAttribute, of: window)
+        }
+        guard setValue(target.origin, type: .cgPoint, for: kAXPositionAttribute, of: window) else {
             throw ServiceError.operationFailed("move the window")
         }
-
-        var size = frame.size
-        guard let axSize = AXValueCreate(.cgSize, &size) else {
-            throw ServiceError.operationFailed("create the window size")
-        }
-
-        let sizeError = AXUIElementSetAttributeValue(
-            window,
-            kAXSizeAttribute as CFString,
-            axSize
-        )
-        guard sizeError == .success else {
-            throw ServiceError.operationFailed("resize the window")
+        if isResizable {
+            guard setValue(target.size, type: .cgSize, for: kAXSizeAttribute, of: window) else {
+                throw ServiceError.operationFailed("resize the window")
+            }
         }
     }
 
-    private func sizeAttribute(
-        _ attribute: String,
-        of window: AXUIElement,
-        error serviceError: ServiceError
-    ) throws -> CGSize {
+    private func screen(showing window: AXUIElement) -> NSScreen? {
+        guard let primaryScreen = NSScreen.screens.first,
+              let accessibilityFrame = frame(of: window) else {
+            return nil
+        }
+        let appKitFrame = ScreenCoordinates(primaryScreenHeight: primaryScreen.frame.height)
+            .appKitFrame(for: accessibilityFrame)
+        return NSScreen.containing(CGPoint(x: appKitFrame.midX, y: appKitFrame.midY))
+    }
+
+    // MARK: - Accessibility attribute helpers
+
+    private func attribute(_ name: String, of element: AXUIElement) -> CFTypeRef? {
         var value: CFTypeRef?
-        let copyError = AXUIElementCopyAttributeValue(window, attribute as CFString, &value)
-        guard copyError == .success, let value else {
-            throw serviceError
+        guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else {
+            return nil
         }
-        let axValue = value as! AXValue
-
-        var size = CGSize.zero
-        guard AXValueGetType(axValue) == .cgSize,
-              AXValueGetValue(axValue, .cgSize, &size) else {
-            throw serviceError
-        }
-        return size
+        return value
     }
 
-    private func pointAttribute(
-        _ attribute: String,
-        of window: AXUIElement,
-        error serviceError: ServiceError
-    ) throws -> CGPoint {
-        var value: CFTypeRef?
-        let copyError = AXUIElementCopyAttributeValue(window, attribute as CFString, &value)
-        guard copyError == .success, let value else {
-            throw serviceError
+    private func elementAttribute(_ name: String, of element: AXUIElement) -> AXUIElement? {
+        guard let value = attribute(name, of: element),
+              CFGetTypeID(value) == AXUIElementGetTypeID() else {
+            return nil
         }
-        let axValue = value as! AXValue
-
-        var point = CGPoint.zero
-        guard AXValueGetType(axValue) == .cgPoint,
-              AXValueGetValue(axValue, .cgPoint, &point) else {
-            throw serviceError
-        }
-        return point
+        return (value as! AXUIElement)
     }
 
-    private func screenContainingMouse() -> NSScreen? {
-        let location = NSEvent.mouseLocation
-        return NSScreen.screens.first { $0.frame.contains(location) }
+    private func stringAttribute(_ name: String, of element: AXUIElement) -> String? {
+        attribute(name, of: element) as? String
+    }
+
+    private func boolAttribute(_ name: String, of element: AXUIElement) -> Bool? {
+        attribute(name, of: element) as? Bool
+    }
+
+    private func valueAttribute<Value>(
+        _ name: String,
+        of element: AXUIElement,
+        as type: AXValueType,
+        initial: Value
+    ) -> Value? {
+        guard let value = attribute(name, of: element),
+              CFGetTypeID(value) == AXValueGetTypeID() else {
+            return nil
+        }
+        var result = initial
+        guard AXValueGetValue(value as! AXValue, type, &result) else {
+            return nil
+        }
+        return result
+    }
+
+    private func isSettable(_ name: String, of element: AXUIElement) -> Bool {
+        var settable: DarwinBoolean = false
+        return AXUIElementIsAttributeSettable(element, name as CFString, &settable) == .success
+            && settable.boolValue
+    }
+
+    private func setValue<Value>(
+        _ value: Value,
+        type: AXValueType,
+        for name: String,
+        of element: AXUIElement
+    ) -> Bool {
+        var value = value
+        guard let axValue = AXValueCreate(type, &value) else {
+            return false
+        }
+        return AXUIElementSetAttributeValue(element, name as CFString, axValue) == .success
     }
 }

@@ -2,6 +2,27 @@
 
 All notable changes to Zonely are documented here.
 
+## v0.2.0 - 2026-11-12
+
+### Changed
+
+- Drag snapping now triggers when the pointer reaches a screen edge or corner, instead of anywhere in the outer quarter of the screen.
+- A drag is recognized by finding the window under the pointer and confirming that it is moving, instead of treating the top 80 points of the frontmost application's window as a title bar.
+- **Test Layout** is now **Move Focused Window** and uses the screen the window is on.
+- Update checks now link to the release page instead of replacing the app in place.
+- A failed drag snap is reported in the menu instead of a modal alert.
+
+### Fixed
+
+- Windows now land in the right place on displays whose top edge is not level with the primary display.
+- Dragging a window that belongs to a background application no longer acts on a different window.
+- A window that cannot be resized is moved instead of failing.
+
+### Removed
+
+- The in-app update installer.
+- The GitLab CI pipeline.
+
 ## v0.1.2 - 2026-09-08
 
 ### Added
